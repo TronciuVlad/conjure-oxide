@@ -267,6 +267,16 @@ fn parse_expr(expr: conjure_ast::Expression) -> Result<minion_ast::Constraint, S
             parse_atom(atom)?,
             minion_ast::Constant::Integer(1),
         )),
+        conjure_ast::Expression::Not(_metadata, inner_expr) => {
+            let inner = Moo::unwrap_or_clone(inner_expr);
+            match inner {
+                conjure_ast::Expression::Atomic(_, atom) => Ok(minion_ast::Constraint::WLiteral(
+                    parse_atom(atom)?,
+                    minion_ast::Constant::Integer(0),
+                )),
+                expr => Err(ModelFeatureNotSupported(format!("{expr:?}"))),
+            }
+        }
 
         // The Minion adaptor currently treats bools as integers anyways, so this is a no-op
         conjure_ast::Expression::ToInt(_metadata, inner_expr) => {

@@ -4,7 +4,9 @@
 use std::{
     collections::HashMap,
     ffi::CString,
+    ptr,
     sync::Condvar,
+    sync::atomic::{AtomicPtr, Ordering},
     sync::{Mutex, MutexGuard},
 };
 
@@ -120,6 +122,7 @@ static CALLBACK: Mutex<Option<Callback>> = Mutex::new(None);
 
 // the variables we want to return, and their ordering in the print matrix
 static PRINT_VARS: Mutex<Option<Vec<VarName>>> = Mutex::new(None);
+static CURRENT_INSTANCE: AtomicPtr<ffi::ProbSpec_CSPInstance> = AtomicPtr::new(ptr::null_mut());
 
 static LOCK: (Mutex<bool>, Condvar) = (Mutex::new(false), Condvar::new());
 
@@ -153,6 +156,7 @@ unsafe extern "C" fn run_callback() -> bool {
         let solution: Constant = Constant::Integer(solution_int);
         solutions.insert(var.to_string(), solution);
     }
+    eprintln!("[minion-sys] raw callback solution: {:?}", solutions);
 
     #[allow(clippy::unwrap_used)]
     match *CALLBACK.lock().unwrap() {
@@ -182,30 +186,110 @@ pub fn run_minion(model: Model, callback: Callback) -> Result<(), MinionError> {
         let search_opts = ffi::searchOptions_new();
         let search_method = ffi::searchMethod_new();
         let search_instance = ffi::instance_new();
+        CURRENT_INSTANCE.store(search_instance, Ordering::SeqCst);
 
-        convert_model_to_raw(search_instance, &model)?;
+        let result = (|| {
+            convert_model_to_raw(search_instance, &model)?;
 
-        let res = ffi::runMinion(
-            search_opts,
-            search_method,
-            search_instance,
-            Some(run_callback),
-        );
+            let res = ffi::runMinion(
+                search_opts,
+                search_method,
+                search_instance,
+                Some(run_callback),
+            );
+
+            match res {
+                0 => Ok(()),
+                x => Err(MinionError::from(RuntimeError::from(x))),
+            }
+        })();
 
         ffi::searchMethod_free(search_method);
         ffi::searchOptions_free(search_opts);
+        CURRENT_INSTANCE.store(ptr::null_mut(), Ordering::SeqCst);
         ffi::instance_free(search_instance);
 
         *_lock_guard = false;
         std::mem::drop(_lock_guard);
-
+        
         condvar.notify_one();
 
-        match res {
-            0 => Ok(()),
-            x => Err(MinionError::from(RuntimeError::from(x))),
+        result
+    }
+}
+
+/// Adds a new auxiliary variable to the currently-running Minion instance.
+///
+/// This is intended for use from a solver callback while `run_minion` is active.
+pub fn add_aux_var_during_search(name: VarName, domain: VarDomain) -> Result<(), MinionError> {
+    let instance = CURRENT_INSTANCE.load(Ordering::SeqCst);
+    if instance.is_null() {
+        return Err(MinionError::Other(anyhow!(
+            "cannot add a Minion variable outside an active callback"
+        )));
+    }
+
+    let c_str = CString::new(name.clone())
+        .map_err(|_| anyhow!("variable name {:?} contains a null character", name))?;
+
+    let (vartype_raw, domain_low, domain_high) = match domain {
+        VarDomain::Bound(a, b) => Ok((ffi::VariableType_VAR_BOUND, a, b)),
+        VarDomain::Discrete(a, b) => Ok((ffi::VariableType_VAR_DISCRETE, a, b)),
+        VarDomain::Bool => Ok((ffi::VariableType_VAR_BOOL, 0, 1)),
+        x => Err(MinionError::NotImplemented(format!("{x:?}"))),
+    }?;
+
+    unsafe {
+        eprintln!(
+            "[minion-sys] add_aux_var_during_search name={:?} domain={:?}",
+            name, domain
+        );
+        ffi::newVar_ffi(
+            instance,
+            c_str.as_ptr() as _,
+            vartype_raw,
+            domain_low,
+            domain_high,
+        );
+    }
+
+    Ok(())
+}
+
+/// Adds a constraint to the currently-running Minion instance.
+///
+/// This is intended for use from a solver callback while `run_minion` is active.
+pub fn add_constraint_during_search(constraint: Constraint) -> Result<(), MinionError> {
+    let instance = CURRENT_INSTANCE.load(Ordering::SeqCst);
+    if instance.is_null() {
+        return Err(MinionError::Other(anyhow!(
+            "cannot add a Minion constraint outside an active callback"
+        )));
+    }
+
+    unsafe {
+        let constraint_type = get_constraint_type(&constraint)?;
+        let raw_constraint = Scoped::new(ffi::constraint_new(constraint_type), |x| {
+            ffi::constraint_free(x as _)
+        });
+
+        constraint_add_args(instance, raw_constraint.ptr, &constraint)?;
+        eprintln!(
+            "[minion-sys] add_constraint_during_search type={} constraint={:?}",
+            constraint_type, constraint
+        );
+        let success = ffi::instance_addConstraintMidsearch(instance, raw_constraint.ptr);
+        eprintln!(
+            "[minion-sys] instance_addConstraintMidsearch success={success}"
+        );
+        if !success {
+            return Err(MinionError::Other(anyhow!(
+                "adding a constraint during Minion search caused immediate failure"
+            )));
         }
     }
+
+    Ok(())
 }
 
 unsafe fn convert_model_to_raw(
