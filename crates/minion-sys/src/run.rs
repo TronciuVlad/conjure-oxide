@@ -2,6 +2,7 @@
 #![allow(unsafe_op_in_unsafe_fn)]
 
 use std::{
+    cell::Cell,
     collections::HashMap,
     ffi::CString,
     ptr,
@@ -125,6 +126,9 @@ static PRINT_VARS: Mutex<Option<Vec<VarName>>> = Mutex::new(None);
 static CURRENT_INSTANCE: AtomicPtr<ffi::ProbSpec_CSPInstance> = AtomicPtr::new(ptr::null_mut());
 
 static LOCK: (Mutex<bool>, Condvar) = (Mutex::new(false), Condvar::new());
+thread_local! {
+    static INSIDE_MINION_CALLBACK: Cell<bool> = const { Cell::new(false) };
+}
 
 #[unsafe(no_mangle)]
 unsafe extern "C" fn run_callback() -> bool {
@@ -158,11 +162,14 @@ unsafe extern "C" fn run_callback() -> bool {
     }
     eprintln!("[minion-sys] raw callback solution: {:?}", solutions);
 
+    INSIDE_MINION_CALLBACK.with(|flag| flag.set(true));
     #[allow(clippy::unwrap_used)]
-    match *CALLBACK.lock().unwrap() {
+    let keep_searching = match *CALLBACK.lock().unwrap() {
         None => true,
         Some(func) => func(solutions),
-    }
+    };
+    INSIDE_MINION_CALLBACK.with(|flag| flag.set(false));
+    keep_searching
 }
 
 /// Run Minion on the given [Model].
@@ -211,7 +218,7 @@ pub fn run_minion(model: Model, callback: Callback) -> Result<(), MinionError> {
 
         *_lock_guard = false;
         std::mem::drop(_lock_guard);
-        
+
         condvar.notify_one();
 
         result
@@ -223,7 +230,8 @@ pub fn run_minion(model: Model, callback: Callback) -> Result<(), MinionError> {
 /// This is intended for use from a solver callback while `run_minion` is active.
 pub fn add_aux_var_during_search(name: VarName, domain: VarDomain) -> Result<(), MinionError> {
     let instance = CURRENT_INSTANCE.load(Ordering::SeqCst);
-    if instance.is_null() {
+    let inside_callback = INSIDE_MINION_CALLBACK.with(|flag| flag.get());
+    if instance.is_null() || !inside_callback {
         return Err(MinionError::Other(anyhow!(
             "cannot add a Minion variable outside an active callback"
         )));
@@ -244,7 +252,7 @@ pub fn add_aux_var_during_search(name: VarName, domain: VarDomain) -> Result<(),
             "[minion-sys] add_aux_var_during_search name={:?} domain={:?}",
             name, domain
         );
-        ffi::newVar_ffi(
+        ffi::newVar_midsearch_ffi(
             instance,
             c_str.as_ptr() as _,
             vartype_raw,
@@ -261,7 +269,8 @@ pub fn add_aux_var_during_search(name: VarName, domain: VarDomain) -> Result<(),
 /// This is intended for use from a solver callback while `run_minion` is active.
 pub fn add_constraint_during_search(constraint: Constraint) -> Result<(), MinionError> {
     let instance = CURRENT_INSTANCE.load(Ordering::SeqCst);
-    if instance.is_null() {
+    let inside_callback = INSIDE_MINION_CALLBACK.with(|flag| flag.get());
+    if instance.is_null() || !inside_callback {
         return Err(MinionError::Other(anyhow!(
             "cannot add a Minion constraint outside an active callback"
         )));
@@ -279,9 +288,7 @@ pub fn add_constraint_during_search(constraint: Constraint) -> Result<(), Minion
             constraint_type, constraint
         );
         let success = ffi::instance_addConstraintMidsearch(instance, raw_constraint.ptr);
-        eprintln!(
-            "[minion-sys] instance_addConstraintMidsearch success={success}"
-        );
+        eprintln!("[minion-sys] instance_addConstraintMidsearch success={success}");
         if !success {
             return Err(MinionError::Other(anyhow!(
                 "adding a constraint during Minion search caused immediate failure"

@@ -74,6 +74,7 @@ fn bind() {
         .allowlist_function("tupleList_free")
         .allowlist_function("getVarByName")
         .allowlist_function("newVar_ffi")
+        .allowlist_function("newVar_midsearch_ffi")
         .allowlist_function("instance_new")
         .allowlist_function("instance_free")
         .allowlist_function("instance_addSearchOrder")
