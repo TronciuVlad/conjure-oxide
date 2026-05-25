@@ -1,0 +1,11 @@
+GCM CDP Minion Timing Comparison
+Generated: 2026-04-29 19:46:18 UTC
+Per-case timeout: 500s
+
+Model                  off(s,status)        on(s,status)         delta off-on     off retention                        on retention                        
+-----                  -------------        ------------         ------------     -------------                        ------------                        
+RC.eprime              18.15,ok             17.25,ok             0.900            retained 1 solutions out of 24       retained 1 solutions out of 1       
+SRC-asymmetric.eprime  162.11,ok            261.24,ok            -99.130          retained 10 solutions out of 50      retained 10 solutions out of 50     
+SRC-spo.eprime         271.79,ok            379.74,ok            -107.950         retained 11 solutions out of 50      retained 11 solutions out of 50     
+SRC-acyclic.eprime     315.55,ok            431.81,ok            -116.260         retained 50 solutions out of 50      retained 50 solutions out of 50     
+SRC-multivariate.eprime 208.06,ok            208.69,ok            -0.630           retained n/a solutions out of n/a    retained n/a solutions out of n/a   

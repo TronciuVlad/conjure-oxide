@@ -1,0 +1,9 @@
+model=SRC-spo mode=off n_solutions=10 dominated_pairs=8
+sol0 dominated_by sol1 | score 0->0 | rel1 edges 1->1 | rel2 edges 5->6
+sol0 dominated_by sol2 | score 0->0 | rel1 edges 1->1 | rel2 edges 5->6
+sol0 dominated_by sol9 | score 0->0 | rel1 edges 1->2 | rel2 edges 5->5
+sol4 dominated_by sol5 | score 0->0 | rel1 edges 1->1 | rel2 edges 5->6
+sol4 dominated_by sol6 | score 0->0 | rel1 edges 1->1 | rel2 edges 5->6
+sol4 dominated_by sol8 | score 0->0 | rel1 edges 1->2 | rel2 edges 5->5
+sol7 dominated_by sol8 | score 0->0 | rel1 edges 2->2 | rel2 edges 4->5
+sol7 dominated_by sol9 | score 0->0 | rel1 edges 2->2 | rel2 edges 4->5

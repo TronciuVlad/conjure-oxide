@@ -1,0 +1,23 @@
+/home/vt29/VIP/conjure-oxide/tests-integration/tests/custom/gcm/eprime/SRC-asymmetric.eprime:94:11:
+  |
+94 |      and([fromSolution(rel1_RelationAsMatrix)[q101, q102] ->
+  |           ^
+Unexpected fromSolution(rel1_RelationAsMatrix) inside a Comprehension
+
+/home/vt29/VIP/conjure-oxide/tests-integration/tests/custom/gcm/eprime/SRC-asymmetric.eprime:98:11:
+  |
+98 |      and([fromSolution(rel2_RelationAsMatrix)[q103, q104] ->
+  |           ^
+Unexpected fromSolution(rel2_RelationAsMatrix) inside a Comprehension
+
+/home/vt29/VIP/conjure-oxide/tests-integration/tests/custom/gcm/eprime/SRC-asymmetric.eprime:103:12:
+  |
+103 |           !fromSolution(rel1_RelationAsMatrix)[q105, q106]
+  |            ^
+Unexpected fromSolution(rel1_RelationAsMatrix) inside a Not Expression
+
+/home/vt29/VIP/conjure-oxide/tests-integration/tests/custom/gcm/eprime/SRC-asymmetric.eprime:107:12:
+  |
+107 |           !fromSolution(rel2_RelationAsMatrix)[q107, q108]
+  |            ^
+Unexpected fromSolution(rel2_RelationAsMatrix) inside a Not Expression
